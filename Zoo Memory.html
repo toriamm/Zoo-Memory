@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+    <title>Zoo Memory</title>
+    <script src="p5.js"></script>
+    <script src="p5.sound.js"></script>
+
+</head>
+<body>
+<script>
+
+  //============================================================================
+  //Global variables
+  var canvas = document.getElementById("canvas");
+
+  var startGameTime = 0;
+
+  var NUM_COLS = 6;
+  var NUM_ROWS = 5;
+  var TILE_SIZE = 128; //pixels
+
+  var canvasWidth = (TILE_SIZE+10)*NUM_COLS+10;  //pixels
+  var canvasHeight = 800;                        //pixels
+
+
+  var flippedTiles = [];
+  var delayStartFC = null;
+  var numTries = 0;
+
+  var startDate = new Date();
+  var startTime = startDate.getTime();
+
+  var cardImage;
+
+  var soundMatch;
+
+  var currentTime = startDate.getTime();
+  var timeChange = Math.round((currentTime - startTime) / 1000);
+
+  var min = Math.floor(timeChange/60);
+  var sec = timeChange % 60;
+
+  //faceImageFileNames is NOT an array of images.
+  // faceImageFileNames IS an array of strings.
+  // Each string is the **NAME** of an image file that will be preloaded into
+  //   faces[]. This is done in the preload() function.
+  var tileFileNames =
+      [
+        "Cow.png",
+        "Deer.png",
+        "Dog.png",
+        "Elephant.png",
+        "Fox.png",
+        "Frog.png",
+        "Giraffe.png",
+        "Hippo.png",
+        "Lion.png",
+        "Monkey.png",
+        "Panda.png",
+        "Pig.png",
+        "Racoon.png",
+        "Sheep.png",
+        "Tiger.png",
+        "Zebra.png"
+      ];
+
+  var tileSoundFileNames =
+      [
+        "Cow.mp3",
+        "Deer.mp3",
+        "Dog.mp3",
+        "Elephant.mp3",
+        "Fox.mp3",
+        "Frog.mp3",
+        "Giraffe.mp3",
+        "Hippo.mp3",
+        "Lion.mp3",
+        "Monkey.mp3",
+        "Panda.mp3",
+        "Pig.mp3",
+        "Racoon.mp3",
+        "Sheep.mp3",
+        "Tiger.mp3",
+        "Zebra.mp3"
+      ];
+
+  var imageSoundList = [];
+  var tiles = [];
+
+
+  //========================================================================
+  // Object constructor for a Tile object.
+  // Tile is the object type and so it starts with an upper-case letter.
+  // This program creates an instance of a Tile for each of the tiles in the game.
+  // The collection of all the tiles (instances of Tile) created in the game
+  //    are stored in the tiles[] array.
+  // Each Tile instance has 5 data items:
+  //    its location (stored in x and y).
+  //    the image drawn when the tile is face up (stored in face).
+  //    the size (width and height) of the tile in pixels (stored in width).
+  //    a boolean variable that is false when the tile is not face up and
+  //      true when the tile is face up.
+  //========================================================================
+  var Tile = function (x, y, faceSound)
+  {
+    this.x = x;
+    this.y = y;
+    this.face = faceSound[0];
+    this.isFaceUp = false;
+    this.isMatch = false;
+    this.sound = faceSound[1];
+  };
+
+
+  //===========================================================================
+  // drawFaceDown function
+  // This is a member function of the Tile class. That means that this function
+  //   can only be called on an instance of Tile.
+  // For example,
+  //    var myTile = new Tile(100,100, myBeautifulImage)
+  //    myTile.drawFaceDown()
+  //
+  // In the above example, the first line creates an instance of Tile and the
+  //   second line calls drawFaceDown() on the tile instance.
+  //===========================================================================
+  Tile.prototype.drawFaceDown = function ()
+  {
+    fill(190, 250, 241);
+    strokeWeight(1);
+    rect(this.x, this.y, TILE_SIZE, TILE_SIZE);
+    image(cardImage, this.x, this.y, TILE_SIZE, TILE_SIZE);
+    this.isFaceUp = false
+  };
+
+
+  //===========================================================================
+  // drawFaceUp function
+  // This is a member function of the Tile class.
+  // It draws the tile in its location with its size using its image
+  //===========================================================================
+  Tile.prototype.drawFaceUp = function ()
+  {
+    fill(188, 202, 232);
+    strokeWeight(2);
+    rect(this.x, this.y, TILE_SIZE, TILE_SIZE);
+    //console.log("this.face[0]="+this.face[0]);
+    //console.log("this.x="+this.x);
+    //console.log("this.y="+this.y);
+    //console.log("TILE_SIZE="+TILE_SIZE);
+    image(this.face, this.x, this.y, TILE_SIZE, TILE_SIZE);
+    this.isFaceUp = true;
+    this.sound.play();
+  };
+
+
+  //===========================================================================
+  // isUnderMouse function
+  // This is a member function of the Tile class.
+  // It returns true if the given x and y values are within the area of the
+  //   tile on which this function is called. Otherwise, it returns false.
+  //===========================================================================
+  Tile.prototype.isUnderMouse = function (x, y)
+  {
+    return (x >= this.x) && (x <= this.x + TILE_SIZE) &&  (y >= this.y) && (y <= this.y + TILE_SIZE);
+  };
+
+
+  //===========================================================================
+  // preload()
+  // This function is called by the JavaScript p5.js library before the page
+  // is loaded. This function is used to load all the images so that they are
+  // ready for when the page calls setup().
+  //===========================================================================
+  function preload()
+  {
+    cardImage = loadImage("CardPattern.png");
+
+
+    for (var i = 0; i < tileFileNames.length; i++)
+    {
+      var myImage = loadImage(tileFileNames[i]);
+      var mySound = loadSound(tileSoundFileNames[i]);
+      imageSoundList.push([myImage, mySound]);
+    }
+
+    soundMatch = loadSound("Click.mp3");
+  }
+
+
+  //===========================================================================
+  // setup()
+  // This function is called by the JavaScript p5.js library when the page
+  // is loaded.
+  // For this program, there is lots to do in setup:
+  //   1) As always, a canvas needs to be created.
+  //   2) Choose which 10 images will be displayed and push two references to each
+  //      image into the "selected[]" array.
+  //   3) randomize the order of all the images in the selected[] array.
+  //   4) Create a instance of Tile in each board location and assign it one of
+  //      the images in selected[].
+  //   5) Set the background of the canvas.
+  //   6) Draw the board of all face down tiles.
+  // ===========================================================================
+  function setup()
+  {
+    createCanvas(canvasWidth, canvasHeight);
+
+    fill(21, 50, 70);
+    strokeWeight(2);
+    rect(0, 0, canvasWidth, canvasHeight, 10);
+
+    // Make an array which has 2 of each, then randomize it
+    var possibleImageSound = imageSoundList.slice(0);
+    var selectedImageSound = [];
+
+    for (var i = 0; i < (NUM_COLS * NUM_ROWS) / 2; i++)
+    {
+      // Randomly pick one from the array of remaining faces
+      var randomInd = floor(random(possibleImageSound.length));
+      var imageSound = possibleImageSound[randomInd];
+
+      // Push twice onto array
+      selectedImageSound.push(imageSound);
+      selectedImageSound.push(imageSound);
+
+
+      // Remove from possibleImageSound[] array
+      possibleImageSound.splice(randomInd, 1);
+
+    }
+
+    selectedImageSound.sort(function ()
+    {
+        return 0.5 - Math.random();
+    });
+
+    // Create the tiles
+    for (var i = 0; i < NUM_COLS; i++)
+    {
+      for (var j = 0; j < NUM_ROWS; j++)
+      {
+        //Create a new tile, pop the next image from the selected[] array, and
+        //   assign the popped image to the tile.
+        var tileX = i * (TILE_SIZE+10) + 10;
+        var tileY = j * (TILE_SIZE+10) + 10;
+
+        var myTile = new Tile(tileX, tileY, selectedImageSound.pop());
+        tiles.push(myTile);
+
+      }
+    }
+
+    background(242, 236, 75);
+
+    // Now draw them face down
+    for (var i = 0; i < tiles.length; i++)
+    {
+      tiles[i].drawFaceDown();
+    }
+
+    var now = new Date();
+    startGameTime = now.getTime();
+  }
+
+
+  //======================================================================
+  //                   mouseClicked
+  //======================================================================
+  function mouseClicked()
+  {
+    for (var i = 0; i < tiles.length; i++)
+    {
+      if (tiles[i].isUnderMouse(mouseX, mouseY))
+      {
+        if (flippedTiles.length < 2 && !tiles[i].isFaceUp)
+        {
+          tiles[i].drawFaceUp();
+          flippedTiles.push(tiles[i]);
+          if (flippedTiles.length === 2)
+          {
+            numTries++;
+            stroke(255, 255, 255);
+            fill(255, 255, 255);
+            rect(canvasWidth/2-40, canvasHeight-90, 75, 60);
+
+            fill(0, 0, 0);
+            stroke(0, 0, 0);
+            textSize(46);
+            text(numTries, canvasWidth/2-30, canvasHeight-44);
+
+
+            if (flippedTiles[0].face === flippedTiles[1].face)
+            {
+              flippedTiles[0].isMatch = true;
+              flippedTiles[1].isMatch = true;
+              flippedTiles[0].sound.play();
+            }
+            delayStartFC = frameCount;
+          }
+        }
+      }
+    }
+    var foundAllMatches = true;
+    for (var i = 0; i < tiles.length; i++)
+    {
+      foundAllMatches = foundAllMatches && tiles[i].isMatch;
+    }
+
+
+    if (foundAllMatches)
+    {
+      fill(153, 231, 247);
+      stroke(0,0,0);
+      strokeWeight(2);
+      rect(35, 300, 768, 170);
+
+      fill(0, 0, 0);
+      textSize(45);
+
+      startDate = new Date();
+
+      text("You found them all in " + numTries + " tries!", 50, 375);
+      text("It took you " + min + " minutes and " + sec +" seconds", 50, 425);
+    }
+  }
+
+
+  //===================================================
+  // draw()
+  // Called after setup() and 60 times per second.
+  //===================================================
+  function draw()
+  {
+    currentTime = startDate.getTime();
+    timeChange = Math.round((currentTime - startTime) / 1000);
+
+    var now = new Date();
+    current = now.getTime();
+    sec = Math.floor(((current-startGameTime)/1000) % 60);
+    min = Math.floor(((current-startGameTime)/1000)/60);
+    fill(242, 236, 75);
+    strokeWeight(0);
+    rect(0, canvasHeight - 100, 150, canvasHeight);
+    fill(153, 231, 247);
+    strokeWeight(2);
+    textSize(20);
+    text(sec, 20, canvasHeight-10);
+    text("seconds", 20, canvasHeight-30);
+    text(min, 20, canvasHeight-60);
+    text("minutes", 20, canvasHeight-80);
+
+
+    stroke(0, 0, 0);
+    if (delayStartFC && (frameCount - delayStartFC) > 30)
+    {
+      for (var i = 0; i < tiles.length; i++)
+      {
+        if (!tiles[i].isMatch)
+        {
+          tiles[i].drawFaceDown();
+        }
+      }
+      flippedTiles = [];
+      delayStartFC = null;
+    }
+  }
+</script>
+</body>
+</html>
